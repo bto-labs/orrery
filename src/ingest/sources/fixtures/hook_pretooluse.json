@@ -1,0 +1,15 @@
+{
+  "id": 34998,
+  "hookEvent": "PreToolUse",
+  "sessionId": "ec02b129-bf34-46f0-8152-b9f146141b64",
+  "cwd": "/home/jay/dev/orrery",
+  "transcriptPath": "/home/jay/.claude/projects/-home-jay-dev-orrery/ec02b129-bf34-46f0-8152-b9f146141b64.jsonl",
+  "createdAt": 1781812274797,
+  "lastAssistantMessage": "",
+  "notificationType": null,
+  "toolName": "Read",
+  "message": null,
+  "rawPayload": "",
+  "agentId": "a9cc5e15d31d33cfd",
+  "agentType": "impl-p2task1"
+}
