@@ -17,6 +17,14 @@ Key JSON paths:
 Redacted fields (keys kept, values blanked): `lastAssistantMessage`, `rawPayload`, `message`.
 Model is NOT present in hook events; it lives only in transcript lines.
 
+Notes for the Task 2 serde struct:
+- `id` IS part of the published wire body (the §9-verified envelope shows `"id": 30911` —
+  the relay message id). Task 2's `HookRelayMessage` need NOT map it; serde ignores
+  unknown fields by default. Don't add a spurious `id` field unless you want it.
+- `agentId`/`agentType` are present for subagent events (blanked to `null` in the
+  PreToolUse fixture — they were this build's own subagent metadata). Plan 2 does not
+  use them (one nucleus per session, not per agent), so the struct omits them.
+
 ## Transcript fixture (`transcript_assistant.jsonl`)
 
 Source: on-disk JSONL from `~/.claude/projects/*/<session>.jsonl`
