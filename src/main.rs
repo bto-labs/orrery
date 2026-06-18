@@ -35,6 +35,14 @@ pub struct Config {
     pub bloom: bool,
     /// VSync on (cap to refresh) or off (uncapped, to measure raw throughput).
     pub vsync: bool,
+    /// Milliseconds of no activity before a session is considered idle.
+    pub idle_ms: u64,
+    /// Milliseconds after last activity before a session is despawned.
+    pub despawn_ms: u64,
+    /// Maximum concurrent sessions tracked (cap enforcement deferred to Plan 2).
+    pub max_agents: usize,
+    /// Run with synthetic data source (true by default in Stage 1).
+    pub synthetic: bool,
 }
 
 /// How many motes to add/remove per keypress.
@@ -50,6 +58,12 @@ pub struct ScreenshotMode(pub Option<String>);
 /// screenshot output path (`--screenshot <path>` / `ORRERY_SCREENSHOT`).
 fn parse_config() -> (Config, Option<String>) {
     fn env_usize(key: &str, default: usize) -> usize {
+        std::env::var(key)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+    fn env_u64(key: &str, default: u64) -> u64 {
         std::env::var(key)
             .ok()
             .and_then(|s| s.parse().ok())
@@ -73,6 +87,12 @@ fn parse_config() -> (Config, Option<String>) {
         Some("0") | Some("false")
     );
     let mut screenshot = std::env::var("ORRERY_SCREENSHOT").ok();
+    let mut idle_ms = env_u64("ORRERY_IDLE_MS", 30_000);
+    let mut despawn_ms = env_u64("ORRERY_DESPAWN_MS", 120_000);
+    let mut max_agents = env_usize("ORRERY_MAX_AGENTS", 64);
+    // Synthetic is on by default in Stage 1; --synthetic is the explicit
+    // dev-mode opt-in named in the spec.
+    let mut synthetic = true;
 
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -102,6 +122,28 @@ fn parse_config() -> (Config, Option<String>) {
                 vsync = false;
                 i += 1;
             }
+            "--idle-ms" => {
+                if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    idle_ms = v;
+                }
+                i += 2;
+            }
+            "--despawn-ms" => {
+                if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    despawn_ms = v;
+                }
+                i += 2;
+            }
+            "--max-agents" => {
+                if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    max_agents = v;
+                }
+                i += 2;
+            }
+            "--synthetic" => {
+                synthetic = true;
+                i += 1;
+            }
             _ => i += 1,
         }
     }
@@ -113,6 +155,10 @@ fn parse_config() -> (Config, Option<String>) {
             seed,
             bloom,
             vsync,
+            idle_ms,
+            despawn_ms,
+            max_agents,
+            synthetic,
         },
         screenshot,
     )
@@ -124,8 +170,13 @@ fn main() {
     // Start the tokio ingestion runtime before building the app; fail cleanly
     // rather than panicking if the OS refuses the thread. Stage 1 is
     // synthetic-only; live sources arrive in Plan 2.
+    let synthetic = if config.synthetic {
+        Some((config.agents, config.seed))
+    } else {
+        None
+    };
     let (receiver, ingest_handle) =
-        match ingest::spawn_ingest(30_000, 120_000, Some((config.agents, config.seed))) {
+        match ingest::spawn_ingest(config.idle_ms, config.despawn_ms, synthetic) {
             Ok(pair) => pair,
             Err(err) => {
                 eprintln!("orrery: failed to start ingestion: {err}");
@@ -134,8 +185,14 @@ fn main() {
         };
 
     println!(
-        "orrery POC starting — {} agents, {} motes, seed {:#x}",
-        config.agents, config.motes, config.seed
+        "orrery POC starting — {} agents, {} motes, seed {:#x}, \
+         idle_ms {}, despawn_ms {}, max_agents {} (cap enforcement deferred to Plan 2)",
+        config.agents,
+        config.motes,
+        config.seed,
+        config.idle_ms,
+        config.despawn_ms,
+        config.max_agents,
     );
 
     App::new()

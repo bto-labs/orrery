@@ -1,8 +1,11 @@
 //! Stage-1 ingestion: tokio runtime, sources, reducer, and the triple_buffer seam.
 
-// Stage-1 ingestion is built incrementally over Tasks 1–6; these types are
-// wired up by the reducer/seam/visuals in later tasks. Tighten/remove this
-// once the module is fully wired (Task 6).
+// Plan-2-only surface still unused by synthetic Stage 1:
+//   - `IngestHandle::tx` (read by live sources in Plan 2 to send updates)
+//   - `ActivityKind::{UserPrompt, AssistantMessage, Other}` (live-source variants)
+//   - `AttentionLevel::Info` (live-source attention level)
+//   - `AgentUpdate::{Attention, Summary}` (live-source update variants)
+// Remove this allow once those sources are wired in Plan 2.
 #![allow(dead_code)]
 
 pub mod model;

@@ -133,7 +133,7 @@ pub fn update_overlay(
              backend  {backend}\n\
              adapter  {adapter}\n\
              res      {resolution}\n\
-             agents {n_nuclei}   motes {n_motes}   entities {}\n\
+             sessions {n_nuclei}   motes {n_motes}   entities {}\n\
              bloom {}   [B] bloom   [+/-] motes   [Esc] quit",
             n_nuclei + n_motes,
             if toggles.bloom_enabled { "ON " } else { "off" },
