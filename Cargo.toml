@@ -1,0 +1,18 @@
+[package]
+name = "orrery"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.18.1", features = ["wayland"] }
+fastrand = "2.4.1"
+triple_buffer = "9.0.0"
+
+# Fast-iteration profile (Bevy's recommended setup): optimise dependencies even
+# in dev builds so the render loop is usable, while keeping our own crate cheap
+# to recompile.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
