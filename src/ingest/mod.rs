@@ -12,6 +12,7 @@
 
 pub mod model;
 pub mod reducer;
+pub mod sources;
 pub mod synthetic;
 
 use std::thread;
