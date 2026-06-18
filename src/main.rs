@@ -15,6 +15,7 @@
 
 mod agent;
 mod diagnostics;
+mod ingest;
 mod sync;
 mod visuals;
 
