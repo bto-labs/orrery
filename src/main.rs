@@ -13,10 +13,8 @@
 //! Everything beyond that (real RabbitMQ/REST/Mimir, tokio, Rapier physics,
 //! idle/D-Bus integration) is intentionally out of scope for this stage.
 
-mod agent;
 mod diagnostics;
 mod ingest;
-mod sync;
 mod visuals;
 
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
@@ -123,15 +121,17 @@ fn parse_config() -> (Config, Option<String>) {
 fn main() {
     let (config, screenshot) = parse_config();
 
-    // Start the synthetic producer before building the app; fail cleanly rather
-    // than panicking if the OS refuses the thread.
-    let receiver = match sync::spawn_synthetic_source(config.agents, config.seed) {
-        Ok(receiver) => receiver,
-        Err(err) => {
-            eprintln!("orrery: failed to start synthetic data source: {err}");
-            std::process::exit(1);
-        }
-    };
+    // Start the tokio ingestion runtime before building the app; fail cleanly
+    // rather than panicking if the OS refuses the thread. Stage 1 is
+    // synthetic-only; live sources arrive in Plan 2.
+    let (receiver, ingest_handle) =
+        match ingest::spawn_ingest(30_000, 120_000, Some((config.agents, config.seed))) {
+            Ok(pair) => pair,
+            Err(err) => {
+                eprintln!("orrery: failed to start ingestion: {err}");
+                std::process::exit(1);
+            }
+        };
 
     println!(
         "orrery POC starting — {} agents, {} motes, seed {:#x}",
@@ -162,19 +162,21 @@ fn main() {
         .add_plugins(LogDiagnosticsPlugin::default())
         .insert_resource(config)
         .insert_resource(receiver)
+        .insert_resource(ingest_handle)
         .insert_resource(RenderToggles {
             bloom_enabled: config.bloom,
         })
         .insert_resource(ScreenshotMode(screenshot))
-        .init_resource::<sync::LatestSnapshot>()
+        .init_resource::<ingest::LatestSnapshot>()
         .init_resource::<diagnostics::RenderInfo>()
         .add_systems(Startup, (visuals::setup_scene, diagnostics::setup_overlay))
         .add_systems(
             Update,
             (
-                // Data → targets → animation, in order, every frame.
+                // Data → reconcile → targets → animation, in order, every frame.
                 (
-                    sync::read_latest_snapshot,
+                    ingest::read_latest_snapshot,
+                    visuals::reconcile_nuclei,
                     visuals::apply_targets,
                     visuals::animate_nuclei,
                 )

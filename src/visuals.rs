@@ -14,8 +14,8 @@ use bevy::render::view::Hdr;
 use bevy::window::PrimaryWindow;
 
 use crate::Config;
-use crate::agent::{AgentStatus, Model};
-use crate::sync::LatestSnapshot;
+use crate::ingest::LatestSnapshot;
+use crate::ingest::model::{AgentState, SessionId, Status, hue_for_model};
 
 /// Base on-screen size (logical px) of a nucleus at unit activity.
 const BASE_NUCLEUS_SIZE: f32 = 70.0;
@@ -39,10 +39,12 @@ pub struct RenderToggles {
 pub struct GlowTexture(pub Handle<Image>);
 
 /// A glowing agent nucleus. Holds both the `target` values (from data) and the
-/// `displayed` values (eased toward the target each frame).
+/// `displayed` values (eased toward the target each frame). Nuclei are spawned
+/// and despawned dynamically as sessions appear and disappear (see
+/// [`reconcile_nuclei`]), and `fade` glides those transitions.
 #[derive(Component)]
 pub struct Nucleus {
-    pub agent_id: u32,
+    pub session_id: SessionId,
     /// Home position as a fraction of the screen half-extents, so it tracks
     /// resolution / resize without re-layout.
     pub home_norm: Vec2,
@@ -51,11 +53,27 @@ pub struct Nucleus {
     pub wobble_seed: f32,
     pub displayed_activity: f32,
     pub target_activity: f32,
-    pub status: AgentStatus,
-    pub model: Model,
+    pub status: Status,
+    pub model: String,
     pub last_pulse_count: u32,
     /// Current flare intensity from a recent discrete pulse (decays to 0).
     pub flare: f32,
+    /// Spawn/despawn fade, eased 0..1 (0 = invisible, 1 = full).
+    pub fade: f32,
+    /// When true, the session vanished from the snapshot — fade to 0, then despawn.
+    pub despawning: bool,
+}
+
+/// Deterministic home position (normalized, roughly [-0.45, 0.45]²) from a
+/// session id, so a session keeps its spot regardless of spawn order.
+pub fn home_for_session(session_id: &str) -> Vec2 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    session_id.hash(&mut h);
+    let v = h.finish();
+    let x = ((v & 0xFFFF) as f32 / 65535.0) - 0.5;
+    let y = (((v >> 16) & 0xFFFF) as f32 / 65535.0) - 0.5;
+    Vec2::new(x * 0.9, y * 0.9)
 }
 
 /// An ambient background mote — cheap, batched glow sprites that exist to load
@@ -154,7 +172,9 @@ pub fn spawn_motes(commands: &mut Commands, glow: &Handle<Image>, count: usize, 
     }
 }
 
-/// Startup: HDR + bloom camera, glow texture, nuclei, and the mote field.
+/// Startup: HDR + bloom camera, glow texture, and the mote field. Nuclei are no
+/// longer spawned here — they're created/destroyed by [`reconcile_nuclei`] as
+/// sessions come and go.
 pub fn setup_scene(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
@@ -183,55 +203,78 @@ pub fn setup_scene(
 
     let glow = images.add(make_glow_image(128));
 
-    // Nuclei laid out on a phyllotaxis (sunflower) spiral for an organic feel.
-    let n = config.agents.max(1);
-    for i in 0..n {
-        let frac = (i as f32 + 0.5) / n as f32;
-        let r = frac.sqrt() * 0.42;
-        let theta = i as f32 * 2.399_963_2; // golden angle (radians)
-        let home_norm = Vec2::new(r * theta.cos(), r * theta.sin());
-        commands.spawn((
-            Sprite {
-                image: glow.clone(),
-                color: Color::WHITE,
-                custom_size: Some(Vec2::splat(BASE_NUCLEUS_SIZE)),
-                ..default()
-            },
-            Transform::from_xyz(0.0, 0.0, 1.0),
-            Nucleus {
-                agent_id: i as u32,
-                home_norm,
-                velocity: Vec2::ZERO,
-                phase: fastrand::f32() * TAU,
-                wobble_seed: fastrand::f32() * TAU,
-                displayed_activity: 0.0,
-                target_activity: 0.0,
-                status: AgentStatus::Idle,
-                model: Model::from_index(i),
-                last_pulse_count: 0,
-                flare: 0.0,
-            },
-        ));
-    }
-
     let half = screen_half_extents(windows.iter().next());
     spawn_motes(&mut commands, &glow, config.motes, half);
 
     commands.insert_resource(GlowTexture(glow));
 }
 
-/// Pull the latest snapshot onto the nuclei: set targets, and convert any
-/// change in `pulse_count` into a flare. Runs after `read_latest_snapshot`.
-pub fn apply_targets(latest: Res<LatestSnapshot>, mut nuclei: Query<&mut Nucleus>) {
-    if latest.0.is_empty() {
-        return;
+/// Reconcile nuclei against the latest snapshot: spawn one for every session
+/// that lacks a nucleus, and mark nuclei whose session has vanished as
+/// despawning (so `animate_nuclei` can fade them out before removing them).
+/// Runs after `read_latest_snapshot`, before `apply_targets`.
+pub fn reconcile_nuclei(
+    mut commands: Commands,
+    latest: Res<LatestSnapshot>,
+    glow: Res<GlowTexture>,
+    mut existing: Query<&mut Nucleus>,
+) {
+    use std::collections::HashSet;
+    let live: HashSet<&str> = latest.0.iter().map(|a| a.session_id.as_str()).collect();
+    let mut have: HashSet<String> = HashSet::new();
+
+    for mut nuc in &mut existing {
+        nuc.despawning = !live.contains(nuc.session_id.as_str());
+        have.insert(nuc.session_id.clone());
     }
+
+    for agent in &latest.0 {
+        if have.contains(&agent.session_id) {
+            continue;
+        }
+        let home = home_for_session(&agent.session_id);
+        spawn_nucleus(&mut commands, &glow.0, home, agent);
+    }
+}
+
+/// Spawn a single nucleus for `agent` at normalized home `home_norm`, faded in
+/// from invisible.
+fn spawn_nucleus(commands: &mut Commands, glow: &Handle<Image>, home_norm: Vec2, agent: &AgentState) {
+    commands.spawn((
+        Sprite {
+            image: glow.clone(),
+            color: Color::WHITE,
+            custom_size: Some(Vec2::splat(BASE_NUCLEUS_SIZE)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 1.0),
+        Nucleus {
+            session_id: agent.session_id.clone(),
+            home_norm,
+            velocity: Vec2::ZERO,
+            phase: fastrand::f32() * TAU,
+            wobble_seed: fastrand::f32() * TAU,
+            displayed_activity: 0.0,
+            target_activity: agent.activity_level,
+            status: agent.status,
+            model: agent.model.clone(),
+            last_pulse_count: agent.pulse_count,
+            flare: 0.0,
+            fade: 0.0,
+            despawning: false,
+        },
+    ));
+}
+
+/// Pull the latest snapshot onto the nuclei: set targets, and convert any
+/// change in `pulse_count` into a flare. Matches nuclei to sessions by
+/// `session_id`. Runs after `reconcile_nuclei`.
+pub fn apply_targets(latest: Res<LatestSnapshot>, mut nuclei: Query<&mut Nucleus>) {
     for mut nuc in &mut nuclei {
-        let id = nuc.agent_id;
-        if let Some(state) = latest.0.iter().find(|s| s.id == id) {
+        if let Some(state) = latest.0.iter().find(|s| s.session_id == nuc.session_id) {
             nuc.target_activity = state.activity_level;
             nuc.status = state.status;
-            nuc.model = state.model;
+            nuc.model = state.model.clone();
             if state.pulse_count != nuc.last_pulse_count {
                 nuc.flare = (nuc.flare + 1.0).min(1.6);
                 nuc.last_pulse_count = state.pulse_count;
@@ -245,8 +288,9 @@ pub fn apply_targets(latest: Res<LatestSnapshot>, mut nuclei: Query<&mut Nucleus
 /// + noise. All easing is framerate-independent.
 pub fn animate_nuclei(
     time: Res<Time>,
+    mut commands: Commands,
     windows: Query<&Window, With<PrimaryWindow>>,
-    mut nuclei: Query<(&mut Nucleus, &mut Transform, &mut Sprite)>,
+    mut nuclei: Query<(Entity, &mut Nucleus, &mut Transform, &mut Sprite)>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 {
@@ -256,8 +300,17 @@ pub fn animate_nuclei(
     let half = screen_half_extents(windows.iter().next());
     let activity_ease = ease_factor(dt, ACTIVITY_TAU);
     let flare_decay = (-dt / FLARE_TAU).exp();
+    let fade_ease = ease_factor(dt, 0.4);
 
-    for (mut nuc, mut transform, mut sprite) in &mut nuclei {
+    for (entity, mut nuc, mut transform, mut sprite) in &mut nuclei {
+        // Fade in to 1.0, or (if despawning) fade out to 0 then despawn.
+        let fade_target = if nuc.despawning { 0.0 } else { 1.0 };
+        nuc.fade += (fade_target - nuc.fade) * fade_ease;
+        if nuc.despawning && nuc.fade < 0.02 {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
         nuc.displayed_activity += (nuc.target_activity - nuc.displayed_activity) * activity_ease;
         nuc.flare *= flare_decay;
 
@@ -266,20 +319,23 @@ pub fn animate_nuclei(
 
         // Breathing (idle) vs pulsing (active) vs jitter (error).
         let speed = match status {
-            AgentStatus::Idle => 0.8,
-            AgentStatus::Active => 2.5 + act * 3.0,
-            AgentStatus::Error => 7.0,
+            Status::Idle => 0.8,
+            Status::Active => 2.5 + act * 3.0,
+            Status::Error => 7.0,
         };
         let breathe = ((t * speed + nuc.phase).sin() * 0.5 + 0.5) * 0.18;
 
-        let size = BASE_NUCLEUS_SIZE * (0.55 + act * 1.4 + breathe + nuc.flare * 0.9);
+        // Fade scales size so spawns grow in and despawns shrink away.
+        let size =
+            BASE_NUCLEUS_SIZE * (0.55 + act * 1.4 + breathe + nuc.flare * 0.9) * (0.4 + 0.6 * nuc.fade);
         sprite.custom_size = Some(Vec2::splat(size));
 
         let (hue, sat) = match status {
-            AgentStatus::Error => (0.0, 0.95),
-            _ => (nuc.model.hue(), 0.85),
+            Status::Error => (0.0, 0.95),
+            _ => (hue_for_model(&nuc.model), 0.85),
         };
-        let brightness = 1.0 + act * 4.0 + breathe * 2.0 + nuc.flare * 9.0;
+        // Fade scales brightness so spawns glow in and despawns dim away.
+        let brightness = (1.0 + act * 4.0 + breathe * 2.0 + nuc.flare * 9.0) * nuc.fade;
         sprite.color = hdr_color(hue, sat, brightness);
 
         // Procedural motion: damped spring toward home + wander + error wobble.
@@ -287,7 +343,7 @@ pub fn animate_nuclei(
         let pos = transform.translation.truncate();
         let mut accel = (home - pos) * 6.0;
         accel += Vec2::new(fastrand::f32() - 0.5, fastrand::f32() - 0.5) * 260.0;
-        if status == AgentStatus::Error {
+        if status == Status::Error {
             accel += Vec2::new(
                 (t * 28.0 + nuc.wobble_seed).sin(),
                 (t * 31.0 + nuc.wobble_seed).cos(),
@@ -343,6 +399,15 @@ pub fn animate_motes(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn home_for_session_is_deterministic_and_in_range() {
+        let a = home_for_session("session-abc");
+        let b = home_for_session("session-abc");
+        assert_eq!(a, b); // stable per session
+        assert!(a.x.abs() <= 0.45 && a.y.abs() <= 0.45);
+        assert_ne!(home_for_session("session-abc"), home_for_session("session-xyz"));
+    }
 
     #[test]
     fn ease_factor_is_in_unit_range_and_monotonic_in_dt() {
