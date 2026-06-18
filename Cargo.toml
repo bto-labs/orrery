@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 bevy = { version = "0.18.1", features = ["wayland"] }
 fastrand = "2.4.1"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time"] }
 triple_buffer = "9.0.0"
 
 # Fast-iteration profile (Bevy's recommended setup): optimise dependencies even
