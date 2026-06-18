@@ -1,10 +1,12 @@
 //! Stage-1 ingestion: tokio runtime, sources, reducer, and the triple_buffer seam.
 
-// Plan-2-only surface still unused by synthetic Stage 1:
+// Plan-2-only surface, unused while Stage 1 runs on synthetic data alone.
+// Several of these are *matched* by the reducer but have no construction site
+// yet (no source emits them), which is what makes them dead code:
 //   - `IngestHandle::tx` (read by live sources in Plan 2 to send updates)
-//   - `ActivityKind::{UserPrompt, AssistantMessage, Other}` (live-source variants)
-//   - `AttentionLevel::Info` (live-source attention level)
-//   - `AgentUpdate::{Attention, Summary}` (live-source update variants)
+//   - `ActivityKind::{UserPrompt, AssistantMessage, Other}` (never built; synthetic emits only ToolUse)
+//   - `AttentionLevel::Info` (never built yet)
+//   - `AgentUpdate::{Attention, Summary}` (matched in the reducer, but no source constructs them yet)
 // Remove this allow once those sources are wired in Plan 2.
 #![allow(dead_code)]
 

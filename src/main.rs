@@ -1,17 +1,16 @@
-//! orrery — Stage-0 proof of concept.
+//! orrery — Stage 1: real-data ingestion foundation.
 //!
-//! A GPU-accelerated ambient visualization of (synthetic) Claude Code agent
-//! activity. This POC de-risks the two riskiest assumptions of the full build
-//! (see `PLAN.md`):
+//! A GPU-accelerated ambient visualization of live Claude Code agent activity.
+//! A dedicated tokio runtime feeds normalized `AgentUpdate`s through a bounded
+//! mpsc into a single reducer that owns the merged per-session model and is the
+//! only writer to the lock-free `triple_buffer`. The Bevy render world reads the
+//! latest snapshot each frame and reconciles a dynamic set of glowing nuclei —
+//! one per session — that spawn, fade, and despawn as sessions come and go (see
+//! `PLAN.md` and `docs/superpowers/`).
 //!
-//!  1. Bevy/wgpu can hold ~60 fps borderless-fullscreen at native 5K on Wayland
-//!     with an HDR bloom pass and hundreds–thousands of animated sprites; and
-//!  2. a background data source can feed per-agent state into the render loop
-//!     across a lock-free `triple_buffer`, smoothing bursty changes into fluid
-//!     motion.
-//!
-//! Everything beyond that (real RabbitMQ/REST/Mimir, tokio, Rapier physics,
-//! idle/D-Bus integration) is intentionally out of scope for this stage.
+//! In this stage the only source is the synthetic generator; the live
+//! RabbitMQ/REST/Mimir sources arrive in Plan 2. Still out of scope (later
+//! stages): Rapier physics, orbital bodies, idle/D-Bus screensaver integration.
 
 mod diagnostics;
 mod ingest;
@@ -185,7 +184,7 @@ fn main() {
         };
 
     println!(
-        "orrery POC starting — {} agents, {} motes, seed {:#x}, \
+        "orrery Stage 1 starting — {} agents, {} motes, seed {:#x}, \
          idle_ms {}, despawn_ms {}, max_agents {} (cap enforcement deferred to Plan 2)",
         config.agents,
         config.motes,

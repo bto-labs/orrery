@@ -90,6 +90,11 @@ impl Reducer {
                 workspace,
                 model,
             } => {
+                // Summary carries no timestamp, so a get-or-create here seeds
+                // last_activity_ms = 0; an out-of-order Summary-only session
+                // would then flip Idle on the next Tick. Harmless in Stage 1
+                // (no source emits Summary) — revisit when the Plan-2 REST/
+                // summary path lands.
                 let a = self.entry(&session, 0);
                 if let Some(s) = status {
                     a.status = s;
