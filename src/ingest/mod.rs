@@ -7,6 +7,7 @@
 
 pub mod model;
 pub mod reducer;
+pub mod synthetic;
 
 use std::thread;
 use std::time::Duration;
@@ -67,12 +68,14 @@ fn now_ms() -> u64 {
 pub fn spawn_ingest(
     idle_ms: u64,
     ttl_ms: u64,
+    synthetic: Option<(usize, u64)>,
 ) -> std::io::Result<(SnapshotReceiver, IngestHandle)> {
     let initial: Vec<AgentState> = Vec::new();
     let (input, output) = triple_buffer(&initial);
     let (tx, rx) = mpsc::channel::<AgentUpdate>(CHANNEL_CAP);
 
     let tick_tx = tx.clone();
+    let tx_for_sources = tx.clone();
     thread::Builder::new()
         .name("orrery-ingest".into())
         .spawn(move || {
@@ -101,8 +104,10 @@ pub fn spawn_ingest(
                         }
                     }
                 });
-                // (Plan 2: spawn rabbit/rest/mimir source tasks here, each holding
-                // a clone of the sender. Synthetic is wired in Task 4 / main.)
+                if let Some((count, seed)) = synthetic {
+                    let synth_tx = tx_for_sources.clone();
+                    tokio::spawn(crate::ingest::synthetic::run_synthetic(synth_tx, count, seed));
+                }
                 reducer_loop(rx, input, idle_ms, ttl_ms).await;
             });
         })?;
