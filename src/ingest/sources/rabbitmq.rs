@@ -7,7 +7,7 @@ use futures_lite::StreamExt;
 use lapin::options::{
     BasicAckOptions, BasicConsumeOptions, BasicQosOptions, QueueBindOptions, QueueDeclareOptions,
 };
-use lapin::types::FieldTable;
+use lapin::types::{AMQPValue, FieldTable};
 use lapin::{Connection, ConnectionProperties};
 use serde::Deserialize;
 use tokio::sync::mpsc;
@@ -110,6 +110,10 @@ async fn consume_once(
     channel
         .basic_qos(64, BasicQosOptions::default())
         .await?;
+    // Bound the durable queue so stale events don't flood the reducer on restart.
+    let mut qargs = FieldTable::default();
+    qargs.insert("x-message-ttl".into(), AMQPValue::LongLongInt(3_600_000));
+    qargs.insert("x-max-length".into(), AMQPValue::LongLongInt(10_000));
     channel
         .queue_declare(
             "orrery.hook".into(),
@@ -117,7 +121,7 @@ async fn consume_once(
                 durable: true,
                 ..Default::default()
             },
-            FieldTable::default(),
+            qargs,
         )
         .await?;
     channel

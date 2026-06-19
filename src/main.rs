@@ -8,9 +8,10 @@
 //! one per session — that spawn, fade, and despawn as sessions come and go (see
 //! `PLAN.md` and `docs/superpowers/`).
 //!
-//! In this stage the only source is the synthetic generator; the live
-//! RabbitMQ/REST/Mimir sources arrive in Plan 2. Still out of scope (later
-//! stages): Rapier physics, orbital bodies, idle/D-Bus screensaver integration.
+//! Live sources: RabbitMQ hook events (`hook.#`) and transcript-model enrichment
+//! (`transcript.message`). Mimir was dropped; the REST source is a no-op.
+//! `--synthetic` switches to the demo field (fake sessions). Still out of scope
+//! (later stages): Rapier physics, orbital bodies, idle/D-Bus screensaver integration.
 
 mod diagnostics;
 mod ingest;

@@ -90,20 +90,23 @@ impl Reducer {
                 workspace,
                 model,
             } => {
-                // Summary carries no timestamp, so a get-or-create here seeds
-                // last_activity_ms = 0; an out-of-order Summary-only session
-                // would then flip Idle on the next Tick. Harmless in Stage 1
-                // (no source emits Summary) — revisit when the Plan-2 REST/
-                // summary path lands.
-                let a = self.entry(&session, 0);
-                if let Some(s) = status {
-                    a.status = s;
-                }
-                if workspace.is_some() {
-                    a.workspace = workspace;
-                }
-                if let Some(m) = model {
-                    a.model = m;
+                // Enrichment-only: Summary updates a session the lifecycle
+                // already knows (created by SessionStart/Activity). We do NOT
+                // get-or-create here — a model/summary arriving before a
+                // session's SessionStart, or replayed after a reconnect for an
+                // already-despawned session, must not seed a ghost nucleus with
+                // last_activity_ms = 0 that would flip Idle forever and never
+                // despawn. Drop it if the session isn't present.
+                if let Some(a) = self.agents.get_mut(&session) {
+                    if let Some(s) = status {
+                        a.status = s;
+                    }
+                    if workspace.is_some() {
+                        a.workspace = workspace;
+                    }
+                    if let Some(m) = model {
+                        a.model = m;
+                    }
                 }
             }
             AgentUpdate::Metrics {
@@ -216,5 +219,30 @@ mod tests {
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].token_rate, 1234.0);
         assert_eq!(snap[0].model, "claude-opus-4-8");
+    }
+
+    #[test]
+    fn summary_enriches_existing_session_but_ignores_unknown() {
+        let mut r = Reducer::new(30_000, 120_000);
+        // Summary for an unknown session is dropped — no ghost nucleus.
+        r.apply(AgentUpdate::Summary {
+            session: "ghost".into(),
+            status: None,
+            workspace: None,
+            model: Some("claude-opus-4-8".into()),
+        });
+        assert!(r.snapshot().is_empty());
+        // Summary updates a session that already exists.
+        r.apply(started("s1", 0));
+        r.apply(AgentUpdate::Summary {
+            session: "s1".into(),
+            status: None,
+            workspace: Some("orrery".into()),
+            model: Some("claude-opus-4-8".into()),
+        });
+        let snap = r.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].model, "claude-opus-4-8");
+        assert_eq!(snap[0].workspace.as_deref(), Some("orrery"));
     }
 }

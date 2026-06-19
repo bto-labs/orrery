@@ -57,7 +57,7 @@ impl AgentState {
     }
 }
 
-/// Normalized update emitted by every source (RabbitMQ, REST, Mimir, synthetic)
+/// Normalized update emitted by every source (RabbitMQ hook, transcript, synthetic)
 /// and consumed only by the reducer. Timestamps are carried in-band so the
 /// reducer never reads a wall clock.
 #[derive(Clone, Debug, PartialEq)]

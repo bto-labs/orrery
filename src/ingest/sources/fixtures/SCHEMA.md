@@ -38,3 +38,5 @@ Key JSON paths:
 
 Redacted fields: `.message.content[*].thinking`, `.message.content[*].signature`
 (content text blanked to `"REDACTED"`; structural keys kept).
+
+**Important:** `transcript_assistant.jsonl` MUST remain a single JSONL line; `extract_session_model` parses the whole file body as one JSON value (one `transcript.message` = one line).
