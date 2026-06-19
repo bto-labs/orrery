@@ -75,7 +75,9 @@ async fn consume_once(
     url: &str,
     exchange: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let conn = Connection::connect(url, ConnectionProperties::default()).await?;
+    let uri = crate::ingest::sources::amqp_uri_with_default_vhost(url)
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
+    let conn = Connection::connect_uri(uri, ConnectionProperties::default()).await?;
     let channel = conn.create_channel().await?;
     channel
         .basic_qos(64, BasicQosOptions::default())
