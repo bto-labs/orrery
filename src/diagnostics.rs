@@ -128,12 +128,12 @@ pub fn update_overlay(
 
     if let Ok(mut text) = text.single_mut() {
         text.0 = format!(
-            "orrery POC\n\
+            "orrery — Stage 1\n\
              FPS {fps:>5.0}   {frame_ms:>5.2} ms\n\
              backend  {backend}\n\
              adapter  {adapter}\n\
              res      {resolution}\n\
-             agents {n_nuclei}   motes {n_motes}   entities {}\n\
+             sessions {n_nuclei}   motes {n_motes}   entities {}\n\
              bloom {}   [B] bloom   [+/-] motes   [Esc] quit",
             n_nuclei + n_motes,
             if toggles.bloom_enabled { "ON " } else { "off" },

@@ -1,5 +1,13 @@
 # Building a GPU-Accelerated Ambient Agent Visualization on Ubuntu 26.04 + RTX 5070 Ti
 
+> **Status (2026-06-19):** Stage 0 (render-stack POC) ✓ and Stage 1 (live data
+> ingestion) ✓ shipped (v0.2.0). Live ingestion is RabbitMQ-only (hook events +
+> transcript-message for model); **Mimir and REST were evaluated and dropped**
+> per the §9 source-availability verification (`docs/superpowers/specs/`). Rapier
+> physics, orbital bodies, and GNOME idle/D-Bus integration remain future stages.
+> This document is the original research/design source-of-truth; see
+> `docs/superpowers/` for the per-stage specs/plans and `CHANGELOG.md` for what shipped.
+
 ## TL;DR
 - **Build it in Rust on wgpu with the Bevy game engine, using Bevy's ECS + Rapier 2.5D physics, a decoupled tokio data layer (lapin for RabbitMQ, reqwest for REST + Mimir PromQL), and run it as a standalone borderless-fullscreen app triggered by GNOME's `org.gnome.Mutter.IdleMonitor` D-Bus watch.** This beats the web/Electron stack of the reference Observatory project for a long-running, native 5K screensaver while keeping the same proven visual language (soft glowing nuclei + orbital bodies + bloom).
 - **Decouple ingestion from rendering with a lock-free SPSC ring buffer / triple buffer**: tokio threads consume RabbitMQ/REST/Mimir and write the latest per-agent state into a shared snapshot the render loop reads each frame; smooth bursty data with exponential interpolation so visuals never stall the frame and never jump.

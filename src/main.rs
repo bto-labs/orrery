@@ -1,21 +1,20 @@
-//! orrery — Stage-0 proof of concept.
+//! orrery — Stage 1: real-data ingestion foundation.
 //!
-//! A GPU-accelerated ambient visualization of (synthetic) Claude Code agent
-//! activity. This POC de-risks the two riskiest assumptions of the full build
-//! (see `PLAN.md`):
+//! A GPU-accelerated ambient visualization of live Claude Code agent activity.
+//! A dedicated tokio runtime feeds normalized `AgentUpdate`s through a bounded
+//! mpsc into a single reducer that owns the merged per-session model and is the
+//! only writer to the lock-free `triple_buffer`. The Bevy render world reads the
+//! latest snapshot each frame and reconciles a dynamic set of glowing nuclei —
+//! one per session — that spawn, fade, and despawn as sessions come and go (see
+//! `PLAN.md` and `docs/superpowers/`).
 //!
-//!  1. Bevy/wgpu can hold ~60 fps borderless-fullscreen at native 5K on Wayland
-//!     with an HDR bloom pass and hundreds–thousands of animated sprites; and
-//!  2. a background data source can feed per-agent state into the render loop
-//!     across a lock-free `triple_buffer`, smoothing bursty changes into fluid
-//!     motion.
-//!
-//! Everything beyond that (real RabbitMQ/REST/Mimir, tokio, Rapier physics,
-//! idle/D-Bus integration) is intentionally out of scope for this stage.
+//! Live sources: RabbitMQ hook events (`hook.#`) and transcript-model enrichment
+//! (`transcript.message`). Mimir was dropped; the REST source is a no-op.
+//! `--synthetic` switches to the demo field (fake sessions). Still out of scope
+//! (later stages): Rapier physics, orbital bodies, idle/D-Bus screensaver integration.
 
-mod agent;
 mod diagnostics;
-mod sync;
+mod ingest;
 mod visuals;
 
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
@@ -36,6 +35,18 @@ pub struct Config {
     pub bloom: bool,
     /// VSync on (cap to refresh) or off (uncapped, to measure raw throughput).
     pub vsync: bool,
+    /// Milliseconds of no activity before a session is considered idle.
+    pub idle_ms: u64,
+    /// Milliseconds after last activity before a session is despawned.
+    pub despawn_ms: u64,
+    /// Maximum concurrent sessions tracked (cap enforcement deferred to Plan 2).
+    pub max_agents: usize,
+    /// Run with synthetic data source. Default false (live mode); --synthetic forces it.
+    pub synthetic: bool,
+    /// Connect to live RabbitMQ hook source. Default true; --no-rabbitmq or --synthetic disables.
+    pub rabbitmq: bool,
+    /// Enable the transcript model-enrichment source. Default true; --no-transcript disables.
+    pub transcript: bool,
 }
 
 /// How many motes to add/remove per keypress.
@@ -51,6 +62,12 @@ pub struct ScreenshotMode(pub Option<String>);
 /// screenshot output path (`--screenshot <path>` / `ORRERY_SCREENSHOT`).
 fn parse_config() -> (Config, Option<String>) {
     fn env_usize(key: &str, default: usize) -> usize {
+        std::env::var(key)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+    fn env_u64(key: &str, default: u64) -> u64 {
         std::env::var(key)
             .ok()
             .and_then(|s| s.parse().ok())
@@ -74,6 +91,17 @@ fn parse_config() -> (Config, Option<String>) {
         Some("0") | Some("false")
     );
     let mut screenshot = std::env::var("ORRERY_SCREENSHOT").ok();
+    let mut idle_ms = env_u64("ORRERY_IDLE_MS", 30_000);
+    let mut despawn_ms = env_u64("ORRERY_DESPAWN_MS", 120_000);
+    let mut max_agents = env_usize("ORRERY_MAX_AGENTS", 64);
+    // Default: live mode. ORRERY_SYNTHETIC=1/true (or --synthetic) switches to demo field.
+    let mut synthetic = matches!(
+        std::env::var("ORRERY_SYNTHETIC").ok().as_deref(),
+        Some("1") | Some("true")
+    );
+    // Live sources default on; --synthetic forces both off.
+    let mut rabbitmq = !synthetic;
+    let mut transcript = true;
 
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -103,6 +131,37 @@ fn parse_config() -> (Config, Option<String>) {
                 vsync = false;
                 i += 1;
             }
+            "--idle-ms" => {
+                if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    idle_ms = v;
+                }
+                i += 2;
+            }
+            "--despawn-ms" => {
+                if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    despawn_ms = v;
+                }
+                i += 2;
+            }
+            "--max-agents" => {
+                if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                    max_agents = v;
+                }
+                i += 2;
+            }
+            "--synthetic" => {
+                synthetic = true;
+                rabbitmq = false;
+                i += 1;
+            }
+            "--no-rabbitmq" => {
+                rabbitmq = false;
+                i += 1;
+            }
+            "--no-transcript" => {
+                transcript = false;
+                i += 1;
+            }
             _ => i += 1,
         }
     }
@@ -114,6 +173,12 @@ fn parse_config() -> (Config, Option<String>) {
             seed,
             bloom,
             vsync,
+            idle_ms,
+            despawn_ms,
+            max_agents,
+            synthetic,
+            rabbitmq,
+            transcript,
         },
         screenshot,
     )
@@ -122,19 +187,61 @@ fn parse_config() -> (Config, Option<String>) {
 fn main() {
     let (config, screenshot) = parse_config();
 
-    // Start the synthetic producer before building the app; fail cleanly rather
-    // than panicking if the OS refuses the thread.
-    let receiver = match sync::spawn_synthetic_source(config.agents, config.seed) {
-        Ok(receiver) => receiver,
+    // Start the tokio ingestion runtime before building the app; fail cleanly
+    // rather than panicking if the OS refuses the thread.
+    let rabbitmq_cfg = if config.rabbitmq {
+        match std::env::var("RABBITMQ_URL") {
+            Ok(url) => Some(ingest::RabbitmqConfig {
+                url,
+                exchange: std::env::var("CLAUDE_EVENTS_EXCHANGE")
+                    .unwrap_or_else(|_| "claude-events".into()),
+                transcript: config.transcript,
+            }),
+            Err(_) => {
+                eprintln!(
+                    "orrery: RABBITMQ_URL unset — live source disabled \
+                     (use --synthetic for the demo field)"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let synthetic_cfg = if config.synthetic {
+        Some((config.agents, config.seed))
+    } else {
+        None
+    };
+    let mode_label = match (&synthetic_cfg, &rabbitmq_cfg) {
+        (Some(_), _) => "synthetic".to_string(),
+        (None, Some(rmq)) if rmq.transcript => "live (rabbitmq, transcript)".to_string(),
+        (None, Some(_)) => "live (rabbitmq)".to_string(),
+        (None, None) => "idle (no source — set RABBITMQ_URL or use --synthetic)".to_string(),
+    };
+    let ingest_cfg = ingest::IngestConfig {
+        idle_ms: config.idle_ms,
+        despawn_ms: config.despawn_ms,
+        synthetic: synthetic_cfg,
+        rabbitmq: rabbitmq_cfg,
+    };
+    let (receiver, ingest_handle) = match ingest::spawn_ingest(ingest_cfg) {
+        Ok(pair) => pair,
         Err(err) => {
-            eprintln!("orrery: failed to start synthetic data source: {err}");
+            eprintln!("orrery: failed to start ingestion: {err}");
             std::process::exit(1);
         }
     };
 
     println!(
-        "orrery POC starting — {} agents, {} motes, seed {:#x}",
-        config.agents, config.motes, config.seed
+        "orrery Stage 1 starting — mode: {mode_label}, {} agents, {} motes, seed {:#x}, \
+         idle_ms {}, despawn_ms {}, max_agents {} (cap enforcement deferred to Plan 2)",
+        config.agents,
+        config.motes,
+        config.seed,
+        config.idle_ms,
+        config.despawn_ms,
+        config.max_agents,
     );
 
     App::new()
@@ -161,19 +268,21 @@ fn main() {
         .add_plugins(LogDiagnosticsPlugin::default())
         .insert_resource(config)
         .insert_resource(receiver)
+        .insert_resource(ingest_handle)
         .insert_resource(RenderToggles {
             bloom_enabled: config.bloom,
         })
         .insert_resource(ScreenshotMode(screenshot))
-        .init_resource::<sync::LatestSnapshot>()
+        .init_resource::<ingest::LatestSnapshot>()
         .init_resource::<diagnostics::RenderInfo>()
         .add_systems(Startup, (visuals::setup_scene, diagnostics::setup_overlay))
         .add_systems(
             Update,
             (
-                // Data → targets → animation, in order, every frame.
+                // Data → reconcile → targets → animation, in order, every frame.
                 (
-                    sync::read_latest_snapshot,
+                    ingest::read_latest_snapshot,
+                    visuals::reconcile_nuclei,
                     visuals::apply_targets,
                     visuals::animate_nuclei,
                 )

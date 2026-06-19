@@ -1,0 +1,15 @@
+{
+  "id": 34547,
+  "hookEvent": "SessionStart",
+  "sessionId": "7c76c002-19b9-43c6-b677-d821df9a579e",
+  "cwd": "/tmp/ci-smoke/27781743188",
+  "transcriptPath": "/home/jay/.claude/projects/-tmp-ci-smoke-27781743188/7c76c002-19b9-43c6-b677-d821df9a579e.jsonl",
+  "createdAt": 1781808319784,
+  "lastAssistantMessage": "",
+  "notificationType": null,
+  "toolName": null,
+  "message": null,
+  "rawPayload": "",
+  "agentId": null,
+  "agentType": null
+}

@@ -1,28 +1,26 @@
 Continuing orrery work from the previous session.
 Working directory: /home/jay/dev/orrery.
-Stage-0 POC is complete, verified on the RTX 5070 Ti, and pushed to `main`.
-Stage 1 (real data ingestion) is fully scoped: spec + foundation plan approved.
-Nothing is in flight; pick up at the Stage 1 verification gate.
+Stage 1 is COMPLETE and live-verified: orrery visualizes real homelab Claude Code
+sessions from RabbitMQ (hook.# + transcript.message), colored by model. The work
+(Plan 1 foundation + Plan 2 live sources, v0.2.0) was merged into `main` LOCALLY
+this session but is NOT pushed to origin.
 
 ## Read these in order BEFORE doing anything else:
 
-1. docs/handoffs/2026-06-17-stage0-poc-and-stage1-scoping.md
-   — the handoff: what shipped, the §9 verification still owed, and the
-     prioritized next steps. Load-bearing: it says do the verification first.
-2. docs/superpowers/specs/2026-06-17-stage1-ingestion-design.md
-   — the approved Stage 1 design; §9 is the source-availability gate that blocks
-     the live-source code.
-3. docs/superpowers/plans/2026-06-17-stage1-ingestion-foundation.md
-   — the 6-task TDD plan for the foundation (tokio/reducer/dynamic-nuclei on
-     synthetic); executable now, independent of the verification.
-4. CLAUDE.md
-   — build deps, the Wayland run command, Bevy 0.18 gotchas, and the
-     GNOME/Mutter FPS-measurement caveat.
+1. docs/handoffs/2026-06-19-stage1-live-rabbitmq-ingestion.md
+   — the handoff: what shipped, the deferred Plan-3 list (§2), branch/push state
+     (§4: merged to main locally, NOT pushed), and the prioritized next steps (§7).
+2. CHANGELOG.md ([orrery] v0.2.0) — the concrete what-shipped for Stage 1.
+3. docs/superpowers/specs/2026-06-17-stage1-source-verification.md
+   — the §9 findings that shaped the design: RabbitMQ-only (Mimir dead, REST no
+     live feed), model comes only from transcript.message. Load-bearing for Plan 3.
+4. CLAUDE.md — build/run (live-by-default; needs RABBITMQ_URL), the ingest
+   architecture, and the hard-won gotchas (lapin 4.10 API, empty-AMQP-vhost→"/",
+   enrichment-only Summary, bounded queues).
 
-## Then: run the §9 source-availability verification — confirm (a) the
-claude-events RabbitMQ exchange/routing-keys/envelope + creds reachable from
-bto-storm (cross-check the mesh-six claude-events-consumer schema), (b) whether
-Mimir actually exports `claude_code_*` with a `session.id` label (needs Grafana
-creds — the MCP was unauthorized last session), and (c) a usable REST endpoint.
-That unblocks authoring Plan 2. In parallel you can start executing Plan 1
-(foundation on synthetic) via the subagent-driven-development skill.
+## Then: confirm with the user whether to `git push origin main` (Stage 1 is
+local-only). If continuing the build, author Plan 3 — start with the highest-value
+deferred items for a 24/7 display: the all-sources-quiet → synthetic auto-fallback
+and the per-source health overlay (orrery currently shows an empty field on a
+broker outage). Use the brainstorming → writing-plans → subagent-driven-development
+flow, as Plan 2 did.

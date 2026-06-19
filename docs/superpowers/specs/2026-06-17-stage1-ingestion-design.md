@@ -1,6 +1,6 @@
 # Stage 1 — Real Data Ingestion (design spec)
 
-- **Status:** approved design, pre-implementation
+- **Status:** ✓ implemented (v0.2.0) — foundation in Plan 1, live sources in Plan 2
 - **Date:** 2026-06-17
 - **Builds on:** the Stage-0 POC (`POC_RESULTS.md`) and `PLAN.md` (source of truth)
 - **Next step:** implementation plan via the writing-plans skill
