@@ -3,3 +3,4 @@
 //! Bevy world or the triple_buffer — the reducer remains the only writer.
 
 pub mod rabbitmq;
+pub mod transcript;
