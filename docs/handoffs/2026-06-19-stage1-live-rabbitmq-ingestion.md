@@ -97,3 +97,12 @@ in order); for Plan 2 chose **live-by-default** + **RabbitMQ + transcript-model*
 3. Optional: run it live during the day (`cargo run --release`, `RABBITMQ_URL`
    set) to see the field populated — this session verified at a quiet hour so
    only 1–2 sessions were active.
+
+## 8. Post-merge stability verification
+
+After the merge + push to origin (`d3bc000`), orrery ran **live for 30 minutes**
+against the real `claude-events` broker (00:52→01:22 local). Result: clean
+startup (Vulkan / RTX 5070 Ti), connected on the first attempt, **zero errors**
+across 7,212 log lines — no reconnects, no vhost issues, no panics — steady ~60
+FPS (107,754 frames), exit 124 (`timeout`-killed at the full 30 min). v0.2.0 is
+confirmed stable under sustained live traffic.
