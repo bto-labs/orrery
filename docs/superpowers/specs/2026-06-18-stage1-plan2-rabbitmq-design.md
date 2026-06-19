@@ -1,6 +1,6 @@
 # Stage 1 — Plan 2: Live RabbitMQ ingestion (design spec)
 
-- **Status:** approved design, pre-implementation
+- **Status:** ✓ implemented (v0.2.0) — RabbitMQ hook + transcript sources live-verified
 - **Date:** 2026-06-18
 - **Builds on:** Plan 1 (the ingestion foundation — `src/ingest/` tokio seam, reducer,
   dynamic nuclei; branch `stage1-ingestion-foundation`), the Stage 1 design spec
