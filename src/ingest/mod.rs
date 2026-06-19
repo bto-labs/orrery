@@ -1,13 +1,9 @@
 //! Stage-1 ingestion: tokio runtime, sources, reducer, and the triple_buffer seam.
 
-// Plan-2-only surface, unused while Stage 1 runs on synthetic data alone.
-// Several of these are *matched* by the reducer but have no construction site
-// yet (no source emits them), which is what makes them dead code:
-//   - `IngestHandle::tx` (read by live sources in Plan 2 to send updates)
-//   - `ActivityKind::{UserPrompt, AssistantMessage, Other}` (never built; synthetic emits only ToolUse)
-//   - `AttentionLevel::Info` (never built yet)
-//   - `AgentUpdate::{Attention, Summary}` (matched in the reducer, but no source constructs them yet)
-// Remove this allow once those sources are wired in Plan 2.
+// Remaining dead code after Plan 2 wiring (never-emitted model surface):
+//   - `ActivityKind::{AssistantMessage, Other}` (synthetic + hook emit only ToolUse/UserPrompt)
+//   - `AttentionLevel::Error` (no source produces error-level attention yet)
+//   - `AgentState::token_rate` (Mimir source deferred; no source sets this field)
 #![allow(dead_code)]
 
 pub mod model;
@@ -38,10 +34,27 @@ pub struct SnapshotReceiver(Output<Vec<AgentState>>);
 #[derive(Resource, Default)]
 pub struct LatestSnapshot(pub Vec<AgentState>);
 
-/// Handle the rest of the app uses to add sources (Plan 2) — a cloneable sender.
+/// Handle the rest of the app uses to add sources — a cloneable sender.
 #[derive(Resource, Clone)]
 pub struct IngestHandle {
     pub tx: mpsc::Sender<AgentUpdate>,
+}
+
+/// Live RabbitMQ source settings. `transcript` toggles the model-enrichment task.
+pub struct RabbitmqConfig {
+    pub url: String,
+    pub exchange: String,
+    pub transcript: bool,
+}
+
+/// Everything `spawn_ingest` needs to decide which sources run.
+pub struct IngestConfig {
+    pub idle_ms: u64,
+    pub despawn_ms: u64,
+    /// `Some((count, seed))` runs the synthetic generator.
+    pub synthetic: Option<(usize, u64)>,
+    /// `Some(..)` runs the live RabbitMQ hook source (+ transcript if enabled).
+    pub rabbitmq: Option<RabbitmqConfig>,
 }
 
 /// Drain updates, fold them through the reducer, publish each new snapshot.
@@ -71,16 +84,14 @@ fn now_ms() -> u64 {
 
 /// Start the tokio runtime on its own OS thread, wire the reducer loop and the
 /// lifecycle tick, and return the render-side receiver plus a handle for sources.
-pub fn spawn_ingest(
-    idle_ms: u64,
-    ttl_ms: u64,
-    synthetic: Option<(usize, u64)>,
-) -> std::io::Result<(SnapshotReceiver, IngestHandle)> {
+pub fn spawn_ingest(cfg: IngestConfig) -> std::io::Result<(SnapshotReceiver, IngestHandle)> {
     let initial: Vec<AgentState> = Vec::new();
     let (input, output) = triple_buffer(&initial);
     let (tx, rx) = mpsc::channel::<AgentUpdate>(CHANNEL_CAP);
 
     let tick_tx = tx.clone();
+    // Each source task gets its own clone; all clones must be taken before
+    // `tx` moves into `IngestHandle`.
     let tx_for_sources = tx.clone();
     thread::Builder::new()
         .name("orrery-ingest".into())
@@ -110,11 +121,28 @@ pub fn spawn_ingest(
                         }
                     }
                 });
-                if let Some((count, seed)) = synthetic {
-                    let synth_tx = tx_for_sources.clone();
-                    tokio::spawn(crate::ingest::synthetic::run_synthetic(synth_tx, count, seed));
+                if let Some((count, seed)) = cfg.synthetic {
+                    tokio::spawn(crate::ingest::synthetic::run_synthetic(
+                        tx_for_sources.clone(),
+                        count,
+                        seed,
+                    ));
                 }
-                reducer_loop(rx, input, idle_ms, ttl_ms).await;
+                if let Some(rmq) = cfg.rabbitmq {
+                    tokio::spawn(crate::ingest::sources::rabbitmq::run_rabbitmq(
+                        tx_for_sources.clone(),
+                        rmq.url.clone(),
+                        rmq.exchange.clone(),
+                    ));
+                    if rmq.transcript {
+                        tokio::spawn(crate::ingest::sources::transcript::run_transcript(
+                            tx_for_sources.clone(),
+                            rmq.url,
+                            rmq.exchange,
+                        ));
+                    }
+                }
+                reducer_loop(rx, input, cfg.idle_ms, cfg.despawn_ms).await;
             });
         })?;
 

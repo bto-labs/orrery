@@ -1,8 +1,6 @@
 //! The hook backbone: consume `hook.#` and map each `HookRelayMessage`
 //! envelope to an `AgentUpdate`. Identity, liveness, pulses, host, workspace.
 
-#![allow(dead_code)]
-
 use std::time::Duration;
 
 use futures_lite::StreamExt;

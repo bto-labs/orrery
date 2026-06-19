@@ -40,8 +40,12 @@ pub struct Config {
     pub despawn_ms: u64,
     /// Maximum concurrent sessions tracked (cap enforcement deferred to Plan 2).
     pub max_agents: usize,
-    /// Run with synthetic data source (true by default in Stage 1).
+    /// Run with synthetic data source. Default false (live mode); --synthetic forces it.
     pub synthetic: bool,
+    /// Connect to live RabbitMQ hook source. Default true; --no-rabbitmq or --synthetic disables.
+    pub rabbitmq: bool,
+    /// Enable the transcript model-enrichment source. Default true; --no-transcript disables.
+    pub transcript: bool,
 }
 
 /// How many motes to add/remove per keypress.
@@ -89,9 +93,14 @@ fn parse_config() -> (Config, Option<String>) {
     let mut idle_ms = env_u64("ORRERY_IDLE_MS", 30_000);
     let mut despawn_ms = env_u64("ORRERY_DESPAWN_MS", 120_000);
     let mut max_agents = env_usize("ORRERY_MAX_AGENTS", 64);
-    // Synthetic is on by default in Stage 1; --synthetic is the explicit
-    // dev-mode opt-in named in the spec.
-    let mut synthetic = true;
+    // Default: live mode. ORRERY_SYNTHETIC=1/true (or --synthetic) switches to demo field.
+    let mut synthetic = matches!(
+        std::env::var("ORRERY_SYNTHETIC").ok().as_deref(),
+        Some("1") | Some("true")
+    );
+    // Live sources default on; --synthetic forces both off.
+    let mut rabbitmq = !synthetic;
+    let mut transcript = true;
 
     let args: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -141,6 +150,15 @@ fn parse_config() -> (Config, Option<String>) {
             }
             "--synthetic" => {
                 synthetic = true;
+                rabbitmq = false;
+                i += 1;
+            }
+            "--no-rabbitmq" => {
+                rabbitmq = false;
+                i += 1;
+            }
+            "--no-transcript" => {
+                transcript = false;
                 i += 1;
             }
             _ => i += 1,
@@ -158,6 +176,8 @@ fn parse_config() -> (Config, Option<String>) {
             despawn_ms,
             max_agents,
             synthetic,
+            rabbitmq,
+            transcript,
         },
         screenshot,
     )
@@ -167,24 +187,53 @@ fn main() {
     let (config, screenshot) = parse_config();
 
     // Start the tokio ingestion runtime before building the app; fail cleanly
-    // rather than panicking if the OS refuses the thread. Stage 1 is
-    // synthetic-only; live sources arrive in Plan 2.
-    let synthetic = if config.synthetic {
+    // rather than panicking if the OS refuses the thread.
+    let rabbitmq_cfg = if config.rabbitmq {
+        match std::env::var("RABBITMQ_URL") {
+            Ok(url) => Some(ingest::RabbitmqConfig {
+                url,
+                exchange: std::env::var("CLAUDE_EVENTS_EXCHANGE")
+                    .unwrap_or_else(|_| "claude-events".into()),
+                transcript: config.transcript,
+            }),
+            Err(_) => {
+                eprintln!(
+                    "orrery: RABBITMQ_URL unset — live source disabled \
+                     (use --synthetic for the demo field)"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let synthetic_cfg = if config.synthetic {
         Some((config.agents, config.seed))
     } else {
         None
     };
-    let (receiver, ingest_handle) =
-        match ingest::spawn_ingest(config.idle_ms, config.despawn_ms, synthetic) {
-            Ok(pair) => pair,
-            Err(err) => {
-                eprintln!("orrery: failed to start ingestion: {err}");
-                std::process::exit(1);
-            }
-        };
+    let mode_label = match (&synthetic_cfg, &rabbitmq_cfg) {
+        (Some(_), _) => "synthetic".to_string(),
+        (None, Some(rmq)) if rmq.transcript => "live (rabbitmq, transcript)".to_string(),
+        (None, Some(_)) => "live (rabbitmq)".to_string(),
+        (None, None) => "idle (no source — set RABBITMQ_URL or use --synthetic)".to_string(),
+    };
+    let ingest_cfg = ingest::IngestConfig {
+        idle_ms: config.idle_ms,
+        despawn_ms: config.despawn_ms,
+        synthetic: synthetic_cfg,
+        rabbitmq: rabbitmq_cfg,
+    };
+    let (receiver, ingest_handle) = match ingest::spawn_ingest(ingest_cfg) {
+        Ok(pair) => pair,
+        Err(err) => {
+            eprintln!("orrery: failed to start ingestion: {err}");
+            std::process::exit(1);
+        }
+    };
 
     println!(
-        "orrery Stage 1 starting — {} agents, {} motes, seed {:#x}, \
+        "orrery Stage 1 starting — mode: {mode_label}, {} agents, {} motes, seed {:#x}, \
          idle_ms {}, despawn_ms {}, max_agents {} (cap enforcement deferred to Plan 2)",
         config.agents,
         config.motes,
