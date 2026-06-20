@@ -2,7 +2,7 @@ import { metadataHash } from "./metadata/hash.js";
 import { RepoMetadataSchema, type RepoMetadata } from "./metadata/schema.js";
 import { buildSheetPrompt } from "./prompt.js";
 import { sliceSheet } from "./slice/index.js";
-import { POSE_ORDER } from "./poses.js";
+import { POSE_ORDER, type Pose } from "./poses.js";
 import { frameKey, sheetKey, type FrameStore } from "./storage.js";
 import type { ImageGenerator, ReferenceImage } from "./gemini.js";
 import type { Registry } from "./registry.js";
@@ -24,16 +24,22 @@ export async function generateForRepo(
   const hash = metadataHash(meta);
 
   if (!opts.force && !deps.registry.needsRegeneration(meta)) {
-    return deps.registry.get(meta.repoKey) ?? meta;
+    const cached = deps.registry.get(meta.repoKey);
+    if (!cached) {
+      throw new Error(`cache inconsistency: needsRegeneration=false but no registry entry for ${meta.repoKey}`);
+    }
+    return cached;
   }
 
   const references = await deps.baseBots();
   const prompt = buildSheetPrompt(meta);
   const sheet = await deps.generator.generateSheet({ prompt, references });
-  const frames = await sliceSheet(sheet, POSE_ORDER);
+  const frames = await sliceSheet(sheet, POSE_ORDER).catch((err: unknown) => {
+    throw new Error(`sliceSheet failed for ${meta.repoKey}: ${err instanceof Error ? err.message : String(err)}`);
+  });
 
   const spriteSheetUri = await deps.store.put(sheetKey(meta.repoKey, hash), sheet, "image/png");
-  const frameEntries = [];
+  const frameEntries: Array<{ pose: Pose; uri: string }> = [];
   for (const frame of frames) {
     const uri = await deps.store.put(
       frameKey(meta.repoKey, hash, frame.pose),

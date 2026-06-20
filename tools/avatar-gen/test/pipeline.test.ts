@@ -113,5 +113,6 @@ describe("generateForRepo", () => {
     const d = await deps(genCount, store);
     await generateForRepo(meta, d, { force: true });
     expect(genCount.n).toBe(1);
+    expect(store.puts).toHaveLength(6);
   });
 });
