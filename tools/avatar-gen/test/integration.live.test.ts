@@ -1,14 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
+import { join, extname } from "node:path";
 import { GoogleGenAI } from "@google/genai";
 import { buildSheetPrompt, SHEET_LAYOUT } from "../src/prompt.js";
 import { GeminiImageGenerator } from "../src/gemini.js";
 import { sliceSheet } from "../src/slice/index.js";
 import { POSE_ORDER } from "../src/poses.js";
 import { RepoMetadataSchema } from "../src/metadata/schema.js";
-import { readFile, readdir } from "node:fs/promises";
-import { extname } from "node:path";
 
 const RUN = process.env.GEMINI_API_KEY ? describe : describe.skip;
 
@@ -25,7 +23,12 @@ RUN("live Gemini generation + slice (gated on GEMINI_API_KEY)", () => {
     });
 
     const dir = process.env.AVATAR_BASE_BOTS ?? "../../assets/bots/base";
-    const botFiles = (await readdir(dir)).filter((f) => extname(f).toLowerCase() === ".png").sort();
+    let botFiles: string[] = [];
+    try {
+      botFiles = (await readdir(dir)).filter((f) => extname(f).toLowerCase() === ".png").sort();
+    } catch {
+      // base-bots directory absent — proceed with no reference images
+    }
     const references = botFiles.length
       ? [{ data: await readFile(join(dir, botFiles[0]!)), mimeType: "image/png" }]
       : [];

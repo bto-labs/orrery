@@ -27,6 +27,9 @@ This de-risks the novel image-gen step before trusting the prompt/slice layout.
    `GEMINI_API_KEY`, and for upload also `SEAWEEDFS_S3_ENDPOINT`,
    `SEAWEEDFS_S3_ACCESS_KEY_ID`, `SEAWEEDFS_S3_SECRET_ACCESS_KEY`,
    `GITEA_BASE_URL`, `GITEA_TOKEN`. Never paste secret values into the repo.
+   Optionally override the default image model with `AVATAR_MODEL_ID`
+   (defaults to `gemini-3-pro-image-preview`; verify this against current Gemini
+   image-model availability before the first real run, as model names churn).
 3. Layout-only validation (writes 5 frames to `spike-out/`, no upload):
    `GEMINI_API_KEY=… npx vitest run test/integration.live.test.ts`
 4. Eyeball `spike-out/_sheet.png` and the 5 `spike-out/<pose>.png` frames:
