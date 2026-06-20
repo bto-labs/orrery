@@ -43,4 +43,16 @@ describe("metadataHash", () => {
     });
     expect(metadataHash(aged)).toBe(metadataHash(base));
   });
+
+  it("is sensitive to accentPalette order (palette order is meaningful)", () => {
+    const reversed = RepoMetadataSchema.parse({
+      ...base,
+      accentPalette: ["#19c3c9", "#6a5acd"],
+    });
+    const forward = RepoMetadataSchema.parse({
+      ...base,
+      accentPalette: ["#6a5acd", "#19c3c9"],
+    });
+    expect(metadataHash(reversed)).not.toBe(metadataHash(forward));
+  });
 });
