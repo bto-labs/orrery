@@ -58,4 +58,10 @@ describe("Registry", () => {
     reg.upsert(done);
     expect(reg.needsRegeneration(meta)).toBe(true);
   });
+
+  it("degrades to an empty registry on a structurally-invalid entry (no throw)", async () => {
+    writeFileSync(path, JSON.stringify({ version: 1, repos: { "bad/entry/x": { not: "valid" } } }));
+    const reg = await Registry.load(path);
+    expect(reg.get("bad/entry/x")).toBeUndefined();
+  });
 });

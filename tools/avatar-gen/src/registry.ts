@@ -15,15 +15,15 @@ export class Registry {
   ) {}
 
   static async load(path: string): Promise<Registry> {
-    let parsed: RegistryFile = { version: 1, repos: {} };
-    try {
-      parsed = JSON.parse(await readFile(path, "utf8")) as RegistryFile;
-    } catch {
-      // missing/empty registry → start fresh
-    }
     const repos = new Map<string, RepoMetadata>();
-    for (const [key, value] of Object.entries(parsed.repos ?? {})) {
-      repos.set(key, RepoMetadataSchema.parse(value));
+    try {
+      const parsed = JSON.parse(await readFile(path, "utf8")) as RegistryFile;
+      for (const [key, value] of Object.entries(parsed.repos ?? {})) {
+        repos.set(key, RepoMetadataSchema.parse(value));
+      }
+    } catch {
+      // missing, unparseable, or schema-invalid registry → start fresh
+      repos.clear();
     }
     return new Registry(path, repos);
   }
