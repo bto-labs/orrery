@@ -26,8 +26,9 @@ describe("buildSheetPrompt", () => {
     expect(p).toContain("a jewel / clockwork orrery");
     expect(p.toLowerCase()).toContain("transparent background");
     expect(p.toLowerCase()).toContain("single image");
-    expect(p.toLowerCase()).toContain("same"); // same character across cells
+    expect(p.toLowerCase()).toContain("same robot"); // same character across cells
     expect(p).toContain(`${SHEET_LAYOUT.cols}`);
+    expect(SHEET_LAYOUT.cells).toBe(5);
   });
 
   it("falls back gracefully when curated theme is blank", () => {
