@@ -60,6 +60,29 @@ labels."** They can be built and shipped separately.
   characters with expression-by-state; physics/force-field motion; orbital
   activity icons; inter-agent arcs; the human pairing. §7.
 
+### 3.1 Realized frame-URI contract (Subsystem A → B)
+
+Frame objects in the `frames` array have a `uri` field populated by Subsystem A
+after slicing. The realized URI shape is:
+
+```
+s3://<bucket>/<repoKey>/<metadataHash>/<pose>.png
+```
+
+where `repoKey` is the multi-segment, unencoded canonical identifier
+(e.g. `gitea.bto.bar/BTO/orrery`). Concrete example:
+
+```
+s3://orrery-agent-sprites/gitea.bto.bar/BTO/orrery/<metadataHash>/idle.png
+```
+
+**Guidance for Subsystem B:** locate frames by reconstructing the object key
+from the discrete `repoKey` + `metadataHash` + `pose` fields already present
+in the registry entry — **do not parse or split the `uri` string**. The `uri`
+is a convenience reference for humans and tooling; `repoKey` + `metadataHash`
+are the authoritative cache coordinates.
+
+
 ## 4. Project metadata schema
 
 Auto-derived as a **placeholder**; Jay fills the creative fields. Stored in a

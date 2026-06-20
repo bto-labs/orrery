@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Stage 2 Subsystem A — per-repo character avatar generation pipeline for orrery",
-  "engines": { "node": ">=20" },
-  "bin": { "avatar-gen": "./dist/cli.js" },
+  "description": "Stage 2 Subsystem A \u2014 per-repo character avatar generation pipeline for orrery",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "avatar-gen": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "derive": "tsx src/cli.ts derive",
     "generate": "tsx src/cli.ts generate",
