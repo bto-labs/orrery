@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { readdir, readFile } from "node:fs/promises";
 import { join, extname, resolve } from "node:path";
 import { GoogleGenAI } from "@google/genai";
-import { loadConfig } from "./config.js";
+import { loadConfig, loadGiteaConfig } from "./config.js";
 import { HttpGiteaClient } from "./metadata/gitea.js";
 import { deriveMetadata, parseRepoKey, type GitInspector } from "./metadata/derive.js";
 import { metadataHash } from "./metadata/hash.js";
@@ -76,8 +76,9 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const cfg = loadConfig(process.env);
-  const gitea = new HttpGiteaClient(cfg.giteaBaseUrl, cfg.giteaToken);
+  // Gitea-subset config: all paths need Gitea creds; derive + dry-run need nothing else
+  const giteaCfg = loadGiteaConfig(process.env);
+  const gitea = new HttpGiteaClient(giteaCfg.giteaBaseUrl, giteaCfg.giteaToken);
   const registry = await Registry.load(values.registry);
   const existing0 = await peekCurated(registry, gitInspector(repoPath));
   const meta = await deriveMetadata({
@@ -97,11 +98,13 @@ async function main(): Promise<void> {
 
   if (values["dry-run"]) {
     console.log(`[dry-run] ${meta.repoKey}`);
-    console.log(`[dry-run] model=${cfg.modelId} layout=${SHEET_LAYOUT.cols}x${SHEET_LAYOUT.rows} ${SHEET_LAYOUT.imageSize}`);
+    console.log(`[dry-run] model=${giteaCfg.modelId} layout=${SHEET_LAYOUT.cols}x${SHEET_LAYOUT.rows} ${SHEET_LAYOUT.imageSize}`);
     console.log(buildSheetPrompt(meta));
     return;
   }
 
+  // Full secrets only needed for real generate
+  const cfg = loadConfig(process.env);
   const ai = new GoogleGenAI({ apiKey: cfg.geminiApiKey });
   const generator = new GeminiImageGenerator(ai, cfg.modelId, {
     aspectRatio: SHEET_LAYOUT.aspectRatio,

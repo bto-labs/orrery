@@ -37,3 +37,24 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     giteaToken: env.GITEA_TOKEN!,
   };
 }
+
+export interface GiteaConfig {
+  modelId: string;
+  giteaBaseUrl: string;
+  giteaToken: string;
+}
+
+const GITEA_REQUIRED = ["GITEA_BASE_URL", "GITEA_TOKEN"] as const;
+
+export function loadGiteaConfig(env: Record<string, string | undefined>): GiteaConfig {
+  const missing = GITEA_REQUIRED.filter((k) => !env[k]);
+  if (missing.length) {
+    // names only — never echo secret VALUES
+    throw new Error(`missing required env: ${missing.join(", ")}`);
+  }
+  return {
+    modelId: env.AVATAR_MODEL_ID ?? "gemini-3-pro-image-preview",
+    giteaBaseUrl: env.GITEA_BASE_URL!,
+    giteaToken: env.GITEA_TOKEN!,
+  };
+}
