@@ -36,9 +36,12 @@ describe("GeminiImageGenerator", () => {
       config: { imageConfig: { aspectRatio: string; imageSize: string } };
     };
     expect(req.model).toBe("gemini-3-pro-image-preview");
-    expect(req.contents[0]).toHaveProperty("inlineData"); // reference first
+    expect(req.contents[0]).toEqual({
+      inlineData: { data: Buffer.from("REF").toString("base64"), mimeType: "image/png" },
+    }); // reference first
     expect(req.contents[1]).toEqual({ text: "make a sheet" }); // prompt last
     expect(req.config.imageConfig.aspectRatio).toBe("4:3");
+    expect(req.config.imageConfig.imageSize).toBe("2K");
   });
 
   it("throws when the response carries no image", async () => {
