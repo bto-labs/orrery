@@ -34,5 +34,6 @@ describe("HttpGiteaClient", () => {
     expect(info.description).toBe("");
     expect(info.topics).toEqual([]);
     expect(info.primaryLanguage).toBeNull();
+    expect(info.createdAt).toBeNull();
   });
 });
