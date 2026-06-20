@@ -16,7 +16,7 @@ export interface ParsedRepoKey {
 export function parseRepoKey(remoteUrl: string): ParsedRepoKey | null {
   // ssh: git@host:owner/repo(.git)   https: https://host/owner/repo(.git)
   const ssh = /^[\w.-]+@([\w.-]+):([\w.-]+)\/([\w.-]+?)(?:\.git)?$/.exec(remoteUrl);
-  const https = /^https?:\/\/([\w.-]+)\/([\w.-]+)\/([\w.-]+?)(?:\.git)?$/.exec(remoteUrl);
+  const https = /^https?:\/\/([\w.-]+?)(?::\d+)?\/([\w.-]+)\/([\w.-]+?)(?:\.git)?$/.exec(remoteUrl);
   const m = ssh ?? https;
   if (!m) return null;
   const host = m[1]!;

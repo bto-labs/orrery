@@ -37,6 +37,14 @@ describe("parseRepoKey", () => {
       "gitea.bto.bar/BTO/orrery",
     );
   });
+  it("strips a port from https remotes", () => {
+    expect(parseRepoKey("https://gitea.bto.bar:8080/BTO/orrery.git")).toEqual({
+      host: "gitea.bto.bar",
+      owner: "BTO",
+      repo: "orrery",
+      repoKey: "gitea.bto.bar/BTO/orrery",
+    });
+  });
 });
 
 describe("deriveMetadata", () => {
