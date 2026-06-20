@@ -20,8 +20,21 @@ export function detectBands(present: boolean[], minRun: number): Array<[number, 
   return bands;
 }
 
+/**
+ * Options for content detection in {@link sliceGrid}.
+ */
 export interface SliceOptions {
+  /**
+   * Alpha value (0-255) at or above which a pixel counts as content.
+   * Default: 16.
+   */
   threshold?: number;
+  /**
+   * Minimum run length (in pixels) for a content band; shorter runs are treated
+   * as noise and dropped. Default: 2 — filters single-pixel anti-aliasing and
+   * compression speckle on real generated sheets. Tune via Task 15 validation
+   * spike if a real sheet's gutters or cells are mis-detected.
+   */
   minRun?: number;
 }
 

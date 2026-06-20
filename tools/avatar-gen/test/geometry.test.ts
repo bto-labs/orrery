@@ -38,6 +38,7 @@ describe("sliceGrid", () => {
     expect(rects).toHaveLength(5);
     // reading order: first three from the top row, then two from the bottom
     expect(rects[0]).toEqual({ left: 1, top: 1, width: 2, height: 3 });
+    expect(rects[1]).toEqual({ left: 5, top: 1, width: 2, height: 3 });
     expect(rects[2]).toEqual({ left: 9, top: 1, width: 2, height: 3 });
     expect(rects[3]).toEqual({ left: 1, top: 5, width: 2, height: 3 });
     expect(rects[4]).toEqual({ left: 5, top: 5, width: 2, height: 3 });
