@@ -37,8 +37,12 @@ export class SeaweedFsStore implements FrameStore {
     try {
       await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }) as never);
       return true;
-    } catch {
-      return false;
+    } catch (err) {
+      const e = err as { $metadata?: { httpStatusCode?: number }; name?: string };
+      if (e.$metadata?.httpStatusCode === 404 || e.name === "NotFound" || e.name === "NoSuchKey") {
+        return false;
+      }
+      throw err;
     }
   }
 }

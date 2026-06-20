@@ -30,3 +30,42 @@ describe("SeaweedFsStore", () => {
     expect(sent[0]?.input.Key).toBe("k/idle.png");
   });
 });
+
+describe("SeaweedFsStore.exists", () => {
+  it("returns true when HeadObject resolves", async () => {
+    const sent: Array<{ name: string; input: Record<string, unknown> }> = [];
+    const fakeS3 = {
+      async send(cmd: { constructor: { name: string }; input: Record<string, unknown> }) {
+        sent.push({ name: cmd.constructor.name, input: cmd.input });
+        return {};
+      },
+    };
+    const store = new SeaweedFsStore(fakeS3 as never, "orrery-agent-sprites");
+    const result = await store.exists("k/idle.png");
+    expect(result).toBe(true);
+    expect(sent[0]?.name).toBe("HeadObjectCommand");
+    expect(sent[0]?.input.Key).toBe("k/idle.png");
+  });
+
+  it("returns false when HeadObject rejects with 404", async () => {
+    const fakeS3 = {
+      async send(_cmd: unknown) {
+        throw { $metadata: { httpStatusCode: 404 }, name: "NotFound" };
+      },
+    };
+    const store = new SeaweedFsStore(fakeS3 as never, "orrery-agent-sprites");
+    const result = await store.exists("k/missing.png");
+    expect(result).toBe(false);
+  });
+
+  it("rethrows when HeadObject rejects with a non-404 error", async () => {
+    const infraError = { $metadata: { httpStatusCode: 500 }, name: "InternalError" };
+    const fakeS3 = {
+      async send(_cmd: unknown) {
+        throw infraError;
+      },
+    };
+    const store = new SeaweedFsStore(fakeS3 as never, "orrery-agent-sprites");
+    await expect(store.exists("k/any.png")).rejects.toMatchObject(infraError);
+  });
+});
