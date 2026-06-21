@@ -20,6 +20,17 @@ on start and fade out on idle/stop. The full design and rationale live in
 > verification under `docs/superpowers/specs/`. Deferred to later stages:
 > per-source health overlay, synthetic auto-fallback, `max_agents` enforcement,
 > Rapier physics, GNOME idle/D-Bus integration.
+>
+> **Stage 2 — character avatars (in progress).** The visual direction is pivoting
+> from abstract glowing nuclei to representational **bot characters** themed per
+> repo (design: `docs/superpowers/specs/2026-06-19-stage2-character-avatars-design.md`).
+> **Subsystem A — the avatar-generation pipeline — has shipped** as a standalone
+> Node/TS worker in [`tools/avatar-gen/`](tools/avatar-gen/): per-repo metadata →
+> a single Gemini contact-sheet (the consistency trick) → 5 sliced, cached sprite
+> frames in SeaweedFS. It produces no live avatars yet (gated on base bots +
+> confirming the Gemini model id + a real spike run), and **Subsystem B — the
+> renderer rework that consumes these frames — is not built yet.** See
+> `tools/avatar-gen/README.md`.
 
 ## Build & run
 

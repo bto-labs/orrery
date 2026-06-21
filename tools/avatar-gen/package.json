@@ -1,0 +1,33 @@
+{
+  "name": "@orrery/avatar-gen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stage 2 Subsystem A \u2014 per-repo character avatar generation pipeline for orrery",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "avatar-gen": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run",
+    "derive": "tsx src/cli.ts derive",
+    "generate": "tsx src/cli.ts generate",
+    "spike": "tsx src/cli.ts generate --force"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@google/genai": "^2.0.1",
+    "sharp": "^0.34.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

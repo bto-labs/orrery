@@ -1,26 +1,36 @@
-Continuing orrery work from the previous session.
-Working directory: /home/jay/dev/orrery.
-Stage 1 is COMPLETE and live-verified: orrery visualizes real homelab Claude Code
-sessions from RabbitMQ (hook.# + transcript.message), colored by model. The work
-(Plan 1 foundation + Plan 2 live sources, v0.2.0) was merged into `main` LOCALLY
-this session but is NOT pushed to origin.
+Continuing orrery (GPU ambient visualization of live Claude Code agent activity).
+Working directory: /home/jay/dev/orrery, on bto-storm (RTX 5070 Ti).
+
+Where things stand: Stage 1 (live RabbitMQ ingestion) shipped (v0.2.0). Stage 2 is
+the pivot to representational bot characters. **Subsystem A — the avatar-generation
+pipeline — is complete and merged to `main` locally** (`tools/avatar-gen/`,
+avatar-gen v0.1.0; 47 tests green; not pushed). **Subsystem B — the renderer rework
+that consumes the generated frames — is not built yet.**
 
 ## Read these in order BEFORE doing anything else:
 
-1. docs/handoffs/2026-06-19-stage1-live-rabbitmq-ingestion.md
-   — the handoff: what shipped, the deferred Plan-3 list (§2), branch/push state
-     (§4: merged to main locally, NOT pushed), and the prioritized next steps (§7).
-2. CHANGELOG.md ([orrery] v0.2.0) — the concrete what-shipped for Stage 1.
-3. docs/superpowers/specs/2026-06-17-stage1-source-verification.md
-   — the §9 findings that shaped the design: RabbitMQ-only (Mimir dead, REST no
-     live feed), model comes only from transcript.message. Load-bearing for Plan 3.
-4. CLAUDE.md — build/run (live-by-default; needs RABBITMQ_URL), the ingest
-   architecture, and the hard-won gotchas (lapin 4.10 API, empty-AMQP-vhost→"/",
-   enrichment-only Summary, bounded queues).
+1. docs/handoffs/2026-06-20-stage2-subsystemA-avatar-gen.md
+   — the full Subsystem-A handoff: what shipped, the Jay-owned blockers, and the
+   prioritized next steps. Load-bearing.
+2. docs/superpowers/specs/2026-06-19-stage2-character-avatars-design.md
+   — the Stage-2 design (character avatars). §3.1 is the A→B frame-URI contract:
+   Subsystem B locates frames via the discrete repoKey+metadataHash+pose fields in
+   assets/agents/registry.json, NOT by parsing the opaque `uri`. §7 sketches the
+   renderer rework (character sprites, expression-by-state, Rapier/force-field
+   motion, orbital hook.* icons, inter-agent arcs, human pairing).
+3. CLAUDE.md — the "Stage 2 — avatar-gen (Subsystem A)" section + the new gotchas
+   (Gemini model-id churn, @google/genai-not-Rust, secrets-from-env).
 
-## Then: confirm with the user whether to `git push origin main` (Stage 1 is
-local-only). If continuing the build, author Plan 3 — start with the highest-value
-deferred items for a 24/7 display: the all-sources-quiet → synthetic auto-fallback
-and the per-source health overlay (orrery currently shows an empty field on a
-broker outage). Use the brainstorming → writing-plans → subagent-driven-development
-flow, as Plan 2 did.
+## Then, pick the next move:
+
+- If Jay has dropped base bots into assets/bots/base/ and confirmed the Gemini model
+  id: run the validation spike (tools/avatar-gen/README.md) to confirm the real
+  single-sheet→slice layout before trusting generation.
+- Otherwise, the main build step is: **invoke the writing-plans skill to author the
+  Subsystem B (renderer rework) implementation plan**, consuming the cached frames
+  per the §3.1 contract and landing the deferred Rapier/force-field motion + orbital
+  activity icons on top of Stage 1's ingestion seam.
+
+Guardrails: never push without Jay's explicit OK (main has unpushed Stage-2 commits).
+Secrets are env-only (OpenBao-injected), never logged. AFFiNE work is parked in the
+bto-devops repo (separate session) — nothing to do from orrery.
