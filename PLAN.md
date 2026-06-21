@@ -1,10 +1,21 @@
 # Building a GPU-Accelerated Ambient Agent Visualization on Ubuntu 26.04 + RTX 5070 Ti
 
-> **Status (2026-06-19):** Stage 0 (render-stack POC) ✓ and Stage 1 (live data
+> **Status (2026-06-20):** Stage 0 (render-stack POC) ✓ and Stage 1 (live data
 > ingestion) ✓ shipped (v0.2.0). Live ingestion is RabbitMQ-only (hook events +
 > transcript-message for model); **Mimir and REST were evaluated and dropped**
 > per the §9 source-availability verification (`docs/superpowers/specs/`). Rapier
 > physics, orbital bodies, and GNOME idle/D-Bus integration remain future stages.
+>
+> **Stage 2 — visual direction revised to representational character avatars.**
+> The abstract "glowing nucleus + orbital bodies" metaphor below is being replaced:
+> each agent renders as a **bot character** themed per repo, with live `hook.*`
+> events as **activity icons orbiting** it, and human-in-the-loop sessions as a
+> human+bot pair. See `docs/superpowers/specs/2026-06-19-stage2-character-avatars-design.md`.
+> Stage 2 decomposes into **Subsystem A — the avatar-generation pipeline ✓ shipped
+> (avatar-gen v0.1.0, `tools/avatar-gen/`)** — and **Subsystem B — the renderer
+> rework (not built yet)**, which keeps Stage 1's ingestion seam and lands the
+> deferred Rapier/force-field motion + the orbital activity icons.
+>
 > This document is the original research/design source-of-truth; see
 > `docs/superpowers/` for the per-stage specs/plans and `CHANGELOG.md` for what shipped.
 

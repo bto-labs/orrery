@@ -1,7 +1,60 @@
 # Changelog
 
 All notable changes to orrery are documented here. Format loosely follows
-[Keep a Changelog](https://keepachangelog.com/); versions track `Cargo.toml`.
+[Keep a Changelog](https://keepachangelog.com/); the `[orrery]` entries' versions
+track `Cargo.toml` (the Rust renderer crate). Subsystems that ship as their own
+package (e.g. `tools/avatar-gen/`) are versioned independently under their own
+heading.
+
+## [avatar-gen] v0.1.0 — 2026-06-20
+
+Stage 2 **Subsystem A** — the avatar-generation pipeline. A standalone Node.js +
+TypeScript worker (`tools/avatar-gen/`, decoupled from the Rust crate) that turns
+per-repo metadata + base bots into 5 cached, themed character-sprite frames (one
+per canonical pose) in SeaweedFS, keyed for regeneration on metadata change. This
+realizes the Stage-2 pivot (`docs/superpowers/specs/2026-06-19-stage2-character-avatars-design.md`):
+agents become representational **bot characters** themed per repo, not abstract
+glowing dots. The Rust renderer (Subsystem B) that consumes these frames is not
+built yet; this ships the generation half. **No renderer/app behaviour changed**
+(`Cargo.toml` stays v0.2.0).
+
+### Added
+- `tools/avatar-gen/` — Node 20+/TS worker (npm), built test-first (47 unit tests;
+  `tsc --noEmit` clean over both `src` and `test`). Every external boundary
+  (Gemini, S3, gitea, git, clock) sits behind an injected interface, so the pure
+  logic is unit-tested with fakes; the live model call is a gated spike.
+- Metadata: `RepoMetadata` zod schema (spec §4); auto-derivation from git remote +
+  gitea API with curated-override merge; `metadataHash` cache-invalidation key over
+  identity + curated fields only (volatile/system fields excluded; `accentPalette`
+  order significant, other arrays normalized).
+- Registry: `assets/agents/registry.json` load/save (keyed by `repoKey`), with a
+  `needsRegeneration` decision (hash match + all 5 poses present) that degrades to
+  an empty registry on a missing/invalid file instead of throwing.
+- Generation: the 5 canonical poses (`neutral, idle, active, attention, error`) as
+  a fixed contract; a single contact-sheet prompt (the consistency trick — base
+  bots as reference images, one image, 5 poses); a `@google/genai` adapter
+  (`gemini-3-pro-image-preview` default, `AVATAR_MODEL_ID` override).
+- Slicing: pure alpha-projection geometry → `sharp`-based slicer that splits the
+  sheet into 5 pose-labeled frames (throws on a cell-count mismatch).
+- Storage: SeaweedFS S3 frame store (path-style), keys `repoKey/metadataHash/<pose>.png`;
+  `exists()` discriminates 404 from real infra errors.
+- Pipeline orchestrator (`generateForRepo`): derive → hash → cache check → generate
+  → slice → upload (sheet + 5 frames) → registry; reads no wall clock (injected
+  `now()`); cache-hit short-circuits with a loud invariant on inconsistency.
+- CLI (`derive` / `generate`, `--dry-run`, `--force`): `derive` and `--dry-run`
+  require only Gitea config; full Gemini/S3 secrets are required only on the real
+  `generate`. Secrets come only from env; config errors list var names, never values.
+- A gated live spike (`test/integration.live.test.ts`, run only with `GEMINI_API_KEY`)
+  + runbook — the de-risking gate validating model/auth/prompt/slice on a real sheet
+  before the layout is trusted.
+- `assets/bots/base/` (style-anchor bots, human-delivered) + `assets/agents/registry.json`.
+
+### Added (docs)
+- `docs/superpowers/plans/2026-06-20-stage2-subsystemA-avatar-generation-pipeline.md`
+  (the implementation plan).
+- `docs/superpowers/specs/2026-06-19-stage2-character-avatars-design.md` §3.1 — the
+  realized frame-URI contract (Subsystem A → B): locate frames via the discrete
+  `repoKey` + `metadataHash` + `pose` fields, not by parsing the opaque `uri`.
 
 ## [orrery] v0.2.0 — 2026-06-19
 

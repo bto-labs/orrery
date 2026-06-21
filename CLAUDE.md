@@ -2,9 +2,13 @@
 
 GPU-accelerated ambient visualization of live Claude Code agent activity.
 Rust + Bevy (wgpu/Vulkan). **Stage 1 shipped (v0.2.0): live RabbitMQ ingestion.**
+**Stage 2 in progress — character avatars:** Subsystem A (the avatar-generation
+pipeline, `tools/avatar-gen/`) has shipped (avatar-gen v0.1.0); Subsystem B (the
+renderer rework that consumes the generated frames) is not built yet.
 See `PLAN.md` (design source of truth), `POC_RESULTS.md` (Stage-0 render
-baseline), and `docs/superpowers/` (Stage 1 + Plan 2 specs/plans, and the §9
-source-availability verification).
+baseline), and `docs/superpowers/` (Stage 1 + Plan 2 specs/plans, the §9
+source-availability verification, and the Stage-2 character-avatars design +
+Subsystem-A plan).
 
 ## Build & run
 
@@ -45,6 +49,34 @@ source-availability verification).
   `diagnostics` (overlay + startup log), `main` (wiring/window/controls/config).
   (`agent.rs` + `sync.rs` were removed — superseded by `ingest`.)
 
+## Stage 2 — avatar-gen (Subsystem A, `tools/avatar-gen/`)
+
+- **Separate package, not the Rust crate.** A standalone Node 20+/TypeScript worker
+  (npm, vitest) under `tools/avatar-gen/`; it is excluded from `cargo` and versioned
+  independently (`avatar-gen` v0.1.0). Run its commands from `tools/avatar-gen/`
+  (`npm test`, `npm run typecheck` runs **both** `tsc` passes — `src` and `test`).
+- **Pipeline:** per-repo metadata (auto-derived from git remote + gitea, with curated
+  overrides) → one Gemini contact-sheet (base bots as reference images, 5 poses in a
+  single generation — the consistency trick) → `sharp` alpha-gutter slice into 5
+  frames → SeaweedFS upload → `assets/agents/registry.json`. Build A before B: its
+  cached frames are the interface B consumes.
+- **Every external boundary is an injected interface** (`ImageGenerator`, `FrameStore`,
+  `GiteaClient`, `GitInspector`, `now()`), so pure logic is unit-tested with fakes; the
+  live Gemini call is a **gated spike** (`test/integration.live.test.ts`, runs only when
+  `GEMINI_API_KEY` is set). The orchestrator reads no wall clock (time via injected
+  `now()`) — same discipline as the Stage-1 reducer.
+- **The 5 canonical poses are a fixed cross-subsystem contract:** `neutral, idle,
+  active, attention, error`. Don't rename/reorder without updating the renderer.
+- **Cache key = `repoKey + metadataHash`;** `metadataHash` hashes identity + curated
+  fields only (volatile `createdAt`/`ageDays`/`hosts` and all generation bookkeeping
+  excluded, so age churn / prior output never trigger regeneration; `accentPalette`
+  order is significant, other arrays are normalized).
+- **Frame-URI contract (A→B), spec §3.1:** frames live at
+  `s3://<bucket>/<repoKey>/<metadataHash>/<pose>.png`, where `repoKey` is itself a
+  multi-segment unencoded id (`gitea.bto.bar/BTO/orrery`). Subsystem B must locate
+  frames by reconstructing the key from the discrete `repoKey`+`metadataHash`+`pose`
+  fields in the registry — **not** by `split('/')`-ing the opaque `uri`.
+
 ## Gotchas (hard-won)
 
 - **Bevy 0.18 API churn — verify against the pinned version, don't trust memory:**
@@ -83,6 +115,20 @@ source-availability verification).
   `x-max-length` so a stopped orrery can't grow the shared broker. Changing the
   declare args requires deleting the existing queues first (else
   `PRECONDITION_FAILED`).
+- **avatar-gen uses `@google/genai` (the official TS SDK), NOT a Rust crate** —
+  community Rust Gemini crates were too immature; the native `generateContent`
+  image path is the reliable one. Image API: `ai.models.generateContent({model,
+  contents:[...refParts,{text}], config:{imageConfig:{aspectRatio,imageSize}}})`;
+  output at `response.candidates[0].content.parts[].inlineData.data` (base64).
+- **Gemini image model id churns — confirm at build.** Default is
+  `gemini-3-pro-image-preview` (Nano Banana Pro — strongest character consistency,
+  chosen since generation is one-time/cached so quality beats latency); override via
+  `AVATAR_MODEL_ID`. The `-preview` suffix and family names change; verify against
+  the live model list before the first real spike run.
+- **avatar-gen secrets are env-only (OpenBao-injected):** `GEMINI_API_KEY`,
+  `SEAWEEDFS_S3_*`, `GITEA_TOKEN` — never hardcoded/logged; config errors list var
+  NAMES only. `derive` and `generate --dry-run` need only the Gitea subset; the full
+  Gemini/S3 set is required only on the real `generate`.
 
 ## Target hardware
 
